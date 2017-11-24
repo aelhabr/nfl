@@ -1,0 +1,18 @@
+Error: package or namespace load failed for 'dplyr' in inDL(x, as.logical(local), as.logical(now), ...):
+ unable to load shared object 'C:/Users/aelhabr/Documents/R/R-3.4.0/library/rlang/libs/x64/rlang.dll':
+  LoadLibrary failure:  Access is denied.
+In addition: Warning message:
+package 'dplyr' was built under R version 3.4.2 
+Execution halted
+Error: package or namespace load failed for 'dplyr' in inDL(x, as.logical(local), as.logical(now), ...):
+ unable to load shared object 'C:/Users/aelhabr/Documents/R/R-3.4.0/library/rlang/libs/x64/rlang.dll':
+  LoadLibrary failure:  Access is denied.
+In addition: Warning message:
+package 'dplyr' was built under R version 3.4.2 
+Execution halted
+Error: package or namespace load failed for 'taskscheduleR' in inDL(x, as.logical(local), as.logical(now), ...):
+ unable to load shared object 'C:/Users/aelhabr/Documents/R/R-3.4.0/library/data.table/libs/x64/datatable.dll':
+  LoadLibrary failure:  Access is denied.
+In addition: Warning message:
+package 'taskscheduleR' was built under R version 3.4.2 
+Execution halted
