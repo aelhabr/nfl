@@ -5,7 +5,6 @@
 #'
 #+ include = FALSE
 rm(list = ls())
-setwd("O:/_other/projects/mail/")
 
 #'
 #'
@@ -20,7 +19,7 @@ library("readxl")
 #'
 #'
 # Functions. ----
-source("functions_predictiontracker.R")
+source("R/functions_predictiontracker.R")
 
 #'
 #'
@@ -85,6 +84,8 @@ lines_truncated %>%
     timestamp = timestamp_runtime_ymd,
     colname_timestamp = "timestamp_download_ymd",
     ws_name = "lines",
+    filename_save = "betting_metrics",
+    dir_save = "data/",
     overwrite_data = FALSE
   )
 
@@ -125,7 +126,9 @@ totals_joined
 totals_joined %>%
   save_as_xlsx(
     timestamp = timestamp_runtime_ymd,
-    colname_timestamp = "timestamp_download_ymd",
+    colname_timestamp = "timestamp_runtime_ymd",
     ws_name = "totals",
+    filename_save = "betting_metrics",
+    dir_save = "data/",
     overwrite_data = FALSE
   )
