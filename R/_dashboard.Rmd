@@ -1,0 +1,246 @@
+---
+title: "Analysis of NFL Predictions"
+author: "Tony"
+date: ""
+output:
+  flexdashboard::flex_dashboard:
+    fig_mobile: FALSE
+---
+
+```{r setup, include = FALSE}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::opts_chunk$set(
+  echo = FALSE,
+  include = FALSE,
+  # eval = FALSE,
+  # cache = FALSE,
+  # autodep = TRUE,
+  results = "markup",
+  # fig.align = "center",
+  fig.show = "hide",
+  fig.width = 8,
+  fig.height = 8,
+  # out.width = 6,
+  # out.height = 6,
+  # width = 80,
+  warning = FALSE,
+  message = FALSE
+)
+
+# metric_string <- ""
+```
+
+```{r vars_shiny}
+evaluate_rs_only <- TRUE
+seasons_display <- 5
+wks_display <- 5
+# colors_2persons_1default <- c("dark blue", "dodgerblue", "grey")
+colors_2persons_1default <- c("darkorange", "dodgerblue", "grey")
+```
+
+```{r packages}
+library("dplyr")
+library("stringr")
+# library("readxl")
+library("ggplot2")
+```
+
+```{r functions}
+# Adjust seasons_display value.
+if (seasons_display > (season_curr - season_first)) {
+  seasons_display <- season_curr - season_first
+}
+# This is for line picks analysis.
+determine_h2h_winner <-
+  function(x_num,
+           y_num,
+           x_char = "a",
+           y_char = "t",
+           default_char = "tie") {
+    ifelse(abs(x_num) < abs(y_num),
+           x_char,
+           ifelse(abs(x_num) > abs(y_num), y_char,
+                  default_char))
+  }
+# This is for game results analysis.
+determine_if_correct <-
+  function(pred,
+           actual,
+           correct_val = "correct",
+           incorrect_val = "incorrect") {
+    ifelse(pred == actual, correct_val, incorrect_val)
+  }
+```
+
+```{r vars_const}
+persons_display <- c("a", "t")
+persson_display_full <- c("Andrew", "Tony")
+path_data <- file.path("data", "db_nfl.xlsm")
+readxl::excel_sheets(path_data)
+ws_persons <- "persons"
+ws_game_results <- "nfl_game_results"
+ws_game_picks <- "nfl_game_picks"
+cols_date <- c("season", "wk")
+cols_duplicate <-
+  c(
+    cols_date,
+    "game_results_name",
+    "line_home_open",
+    "line_home_close",
+    "pts_home",
+    "pts_away",
+    "time_period",
+    "tm_winner_spread",
+    "tm_winner_straight"
+  )
+wk_rs_last <- 17
+
+cols_game_id <- c(cols_date, "tm_away", "tm_home")
+cols_display_line_picks <-
+  c(cols_game_id, "person", "line_home", "line_home_pick")
+```
+
+```{r import}
+persons <- path_data %>% readxl::read_excel(sheet = ws_persons)
+game_results <- path_data %>% readxl::read_excel(sheet = ws_game_results)
+
+# Change the n_max paramter because the first non-blank tm_pick_straight is not
+# seen in the firs 1000 rows.
+game_picks <- path_data %>% readxl::read_excel(sheet = ws_game_picks, guess_max = 2000)
+
+game_picks_join <-
+  game_picks %>%
+  select(-one_of(cols_duplicate)) %>%
+  # left_join(game_results %>% select(-id))
+  left_join(game_results, by = c("game_results_id" = "id"))
+```
+
+```{r data_vars_calc}
+rows_firstlast <-
+  game_results %>%
+  filter(!is.na(season) & !is.na(wk)) %>%
+  # arrange(season, wk) %>%
+  slice(c(1, n()))
+first_results_row <- slice(rows_firstlast, 1)
+last_results_row <- slice(rows_firstlast, n())
+
+season_first <- pull(first_results_row, season)
+season_curr <- pull(last_results_row, season)
+wk_curr <- pull(last_results_row, wk)
+if(wk_curr > wk_rs_last) {
+  wk_curr <- wk_rs_last
+}
+wk_prev <- wk_curr - 1
+season_display_min <- season_curr - seasons_display
+season_display_max <- season_curr
+```
+```{r viz_constants}
+theme_custom <-
+  teplot::theme_te() +
+  theme(
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank(),
+    legend.position = "bottom"
+  )
+
+x_wk_vals <- seq(0, wk_rs_last, by = 1)
+y_wk_vals <- seq(0, wk_rs_last, by = 2)
+alpha_secondary <- 0.5
+x_season_vals <- seq(season_display_min, season_curr, by = 1)
+title_line_picks_recent <- "\"Guessing the Lines\" Picks"
+title_line_picks <- "Head-to-Head \"Guessing the Lines\" Winner"
+title_results_picks <- "Accuracy of Game Picks, Against the Spread"
+```
+
+```{r data_filt}
+game_picks_join <-
+  game_picks_join %>%
+  filter(person %in% persons_display) %>%
+  arrange(game_results_id)
+
+if (evaluate_rs_only) {
+  game_picks_join <-
+    game_picks_join %>%
+    filter(wk <= wk_rs_last)
+}
+```
+
+```{r viz_line_picks_tidy_recent}
+# Both of these attempts need some work...
+viz_line_picks_tidy_recent <-
+  # line_picks_tidy_recent %>%
+  game_picks_join %>%
+  mutate(line_home = ifelse(is.na(line_home_open), line_home_close, line_home_open)) %>%
+  filter(season == season_curr, wk == wk_prev) %>%
+  mutate(matchup = paste0(tm_away, "@", tm_home)) %>%
+  ggplot() +
+  geom_col(aes(x = matchup, y = line_home_pick, fill = person), position = "dodge") +
+  scale_fill_manual(values = colors_2persons_1default) +
+  geom_point(aes(x = matchup, y = line_home), color = "black", size = 2) +
+  geom_text(aes(x = matchup, y = line_home, label = line_home), nudge_x = 0.5) +
+  # geom_col(aes(x = matchup, y = line_home), stat = "summary" , fun.y = "min", color = "black", alpha = 0.4) +
+  theme(axis.text.x = element_text(angle = 45)) +
+  labs(title = title_line_picks_recent) +
+  labs(subtitle = paste0("Line Picks", ", ", "By Matchup, for Week ", wk_curr, ", ", season_curr)) +
+  theme_custom
+viz_line_picks_tidy_recent
+
+cols_display_line_picks_recent <- c(cols_game_id, "person", "line_type", "value")
+line_picks_recent <-
+  game_picks_join %>%
+  mutate(line_home = ifelse(is.na(line_home_open), line_home_close, line_home_open)) %>%
+  select(-starts_with("line_home_[co]")) %>%
+  tidyr::gather(line_type, value, line_home, line_home_pick) %>%
+  select(one_of(cols_display_line_picks_recent)) %>%
+  mutate(person = ifelse(line_type == "line_home", "actual", person)) %>%
+  select(-line_type) %>%
+  distinct()
+line_picks_recent %>% filter(person == "actual") %>% tail()
+
+viz_line_picks_tidy_recent_2 <-
+  line_picks_recent %>%
+  filter(season == season_curr, wk == wk_prev) %>%
+  mutate(matchup = paste0(tm_away, "@", tm_home)) %>%
+  mutate(person = factor(person, levels = c("a", "t", "actual"))) %>%
+  ggplot() +
+  geom_col(aes(x = matchup, y = value, fill = person), position = "dodge") +
+  scale_fill_manual(values = colors_2persons_1default) +
+  theme(axis.text.x = element_text(angle = 45)) +
+  labs(title = title_line_picks_recent) +
+  labs(subtitle = paste0("Line Picks, By Matchup, for Week ", wk_curr, ", ", season_curr)) +
+  theme_custom
+viz_line_picks_tidy_recent_2
+```
+
+
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### Current Season
+
+#### By Week
+
+```{r viz_line_picks_bywk_output, fig.show = "asis"}
+
+viz_line_picks_bywk_output
+```
+
+
+```{r viz_results_picks_bywk_output, fig.show = "asis"}
+viz_results_picks_bywk_output
+```
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+#### By Season
+
+```{r viz_line_picks_byseason_output, fig.show = "asis"}
+viz_line_picks_byseason_output
+```
+
+```{r viz_results_picks_byseason_output, fig.show = "asis"}
+viz_results_picks_byseason_output
+```
+
