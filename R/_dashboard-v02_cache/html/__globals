@@ -1,0 +1,33 @@
+vars_shiny	evaluate_rs_only	yrs_rng	wks_rng
+packages	library
+functions	ifelse_correct	ifelse	pred	actual	true	false
+vars_const	wk_rs_last	gpwk	persons_dual	c	colors_dual	path_data	file.path	excel_sheets
+import	ws_game_results	suppressWarnings	game_results	path_data	%>%	read_excel	ws_game_picks	game_picks	cols_game_results	setdiff	names	cols_game_picks	c	game_picks_join	select	one_of	left_join
+vars_const_calc	rows_firstlast	game_results	%>%	filter	is.na	season	wk	slice	c	n	first_results_row	last_results_row	yr_first	pull	yr_curr	wk_curr	wk_rs_last	yrs_rng	wk_prev	yr_display_min	yr_display_max
+viz_constants	theme_custom	theme_te	x_wk_vals	seq	wk_rs_last	y_wk_vals	alpha_secondary	x_yr_vals	yr_display_min	yr_curr
+data_filt	game_picks_join	%>%	filter	person	%in%	persons_dual	arrange	id	evaluate_rs_only	wk	wk_rs_last
+viz_line_picks_recent	cols_dates	c	cols_game_id	cols_display_line_picks_recent	person_actual	line_picks_recent	game_picks_join	%>%	mutate	ifelse	is.na	line_home_open	line_home_close	select	starts_with	gather	line_type	value	line_home	line_home_pick	person	factor	persons_dual	one_of	distinct	filter	tail	lab_title_line_picks_recent	lab_subtitle_line_picks_recent	sprintf	wk_curr	yr_curr	persons_trips_1	color_default_1	colors_trips_1_named	setNames	colors_dual	width_dodge	viz_line_picks_recent	season	wk	wk_prev	paste0	tm_away	tm_home	fct_reorder	ggplot	aes	matchup	geom_pointrangeh	position_dodgev	scale_color_manual	theme_custom	labs
+line_picks_proc	cols_display_line_picks	c	cols_game_id	line_picks_tidy	game_picks_join	%>%	mutate	ifelse	is.na	line_home_open	line_home_close	select	starts_with	one_of	factor	person	persons_trips_1	spread	line_home_pick	person_tie	compute_h2h_winner_abs_at	persons_dual	col_x	col_y	col_x_sym	sym	col_y_sym	col_ref_sym	col_ref	col_new_sym	col_new	data	abs	true_x	true_y	default	line_picks_calc	line_picks_summ_bywk	group_by	season	wk	winner	summarise	n	ungroup	tail	line_picks_bywk_spread	winner_cnt	mutate_all	as.integer	syms	arrange
+viz_line_picks_bywk	lab_title_line_picks_bywk	lab_subtitle_line_picks_bywk	sprintf	yr_curr	persons_trips_2	c	persons_dual	person_tie	color_default_2	color_default_1	colors_trips_2_named	setNames	colors_dual	viz_line_picks_bywk	line_picks_bywk_spread	%>%	gather	person	cnt	season	wk	mutate	factor	filter	wk_curr	ggplot	aes	geom_pointrange	position_dodge	width_dodge	scale_color_manual	scale_x_continuous	x_wk_vals	scale_y_continuous	y_wk_vals	theme_custom	labs
+line_picks_summ_byyr	line_picks_bywk_spread_calc	line_picks_bywk_spread	%>%	mutate	compute_h2h_winner_abs_at	person_tie	select	dummy	filter	is.na	winner	season	yr_curr	wk	wk_curr	tail	line_picks_summ_byyr	group_by	summarise	n	ungroup	line_picks_byyr_spread	spread	person	cnt	syms	persons_dual	sym	arrange
+viz_line_picks_byyr	lab_title_line_picks_byyr	lab_subtitle_line_picks_byyr	sprintf	yr_display_min	yr_curr	viz_line_picks_byyr	line_picks_summ_byyr	%>%	mutate	factor	person	persons_trips_2	ggplot	aes	season	cnt	geom_pointrange	position_dodge	width_dodge	scale_color_manual	colors_trips_2_named	scale_y_continuous	y_wk_vals	theme_custom	labs
+results_picks_calc	results_picks_calc	game_picks_join	%>%	mutate	ifelse_correct	tm_pick_spread	tm_winner_spread	tm_pick_straight	tm_winner_straight	filter	is.na	pick_result_spread	cols_display_results_picks_recent	c	cols_game_id	results_picks_recent	select	one_of	tail
+results_picks_calc_recent	lab_title_results_picks_recent	lab_subtitle_results_picks_recent	sprintf	wk_curr	yr_curr	colors_dual_named	setNames	colors_dual	persons_dual	viz_results_picks_recent	results_picks_calc	%>%	filter	season	wk	wk_prev	mutate	paste0	tm_away	tm_home	fct_reorder	confidence_spread	ggplot	aes	matchup	geom_pointrangeh	person	position_dodgev	width_dodge	scale_color_manual	theme_custom	labs
+viz_results_picks_recent	arrow_padding	arrow_offset	w_home_t	w_home_f	results_picks_calc_recent	results_picks_calc	%>%	filter	season	yr_curr	wk	wk_prev	mutate	paste0	tm_away	tm_home	pts_home	pts_away	if_else	pts_h2a_diff	factor	matchup	fct_reorder	line_home_close	ifelse	tm_pick_spread	arrow_dir	colors_rg	c	w_home_tf	colors_rg_named	setNames	point_size	colors_dual_and_rg_named	colors_dual	persons_dual	lab_title_results_picks_recent_2	lab_title_results_picks_recent	lab_subtitle_results_picks_recent_2	sprintf	wk_curr	viz_results_picks_recent	ggplot	geom_vline	aes	geom_segment	pick_arrow_end1	pick_arrow_end2	person	arrow	unit	geom_text	geom_point	w_home	scale_color_manual	theme_custom	labs
+results_picks_bywk	results_picks_summ	results_picks_calc	%>%	group_by	season	wk	person	pick_result_spread	summarise	n	ungroup	tail	results_picks_bywk	spread	cnt	mutate	correct	incorrect	arrange	cumsum
+viz_results_picks_bywk	lab_title_results_picks_bywk	lab_subtitle_results_picks_bywk	sprintf	yr_curr	viz_results_picks_bywk	results_picks_bywk	%>%	filter	season	ggplot	aes	wk	correct_pct	geom_pointrange	person	position_dodge	width_dodge	geom_line	correct_pct_td	geom_hline	scale_color_manual	colors_dual	scale_x_continuous	x_wk_vals	scale_y_continuous	percent_format	c	theme_custom	labs
+results_picks_byyr	results_picks_byyr	results_picks_bywk	%>%	group_by	season	person	summarise_at	vars	correct	incorrect	funs	sum	mutate	ungroup	arrange	cumsum	tail
+viz_results_picks_byyr	lab_title_results_picks_byyr	lab_title_results_picks_bywk	lab_subtitle_results_picks_byyr	sprintf	yr_display_min	yr_curr	viz_results_picks_byyr	results_picks_byyr	%>%	ggplot	aes	season	correct_pct	geom_pointrange	person	position_dodge	width_dodge	geom_line	correct_pct_td	geom_hline	scale_color_manual	colors_dual	scale_x_continuous	x_yr_vals	scale_y_continuous	percent_format	c	theme_custom	labs
+knit_cleanly	knit_cleanly	data	%>%	mutate_if	is.numeric	funs	round	.	kable	kable_styling	F
+viz_line_picks_recent_show	viz_line_picks_recent
+line_picks_recent_show	line_picks_recent	%>%	arrange	desc	season	wk	person	filter	%in%	c	wk_prev	wk_curr	knit_cleanly
+viz_line_picks_bywk_show	viz_line_picks_bywk
+line_picks_bywk_show	line_picks_bywk_spread	%>%	arrange	desc	season	wk	knit_cleanly
+viz_line_picks_byyr_show	viz_line_picks_byyr
+line_picks_byyr_show	line_picks_byyr_spread	%>%	arrange	desc	season	knit_cleanly
+viz_results_picks_recent_show	viz_results_picks_recent
+results_picks_recent_show	results_picks_recent	%>%	arrange	desc	season	wk	person	filter	%in%	c	wk_prev	wk_curr	knit_cleanly
+results_picks_bywk_show	results_picks_bywk	%>%	arrange	desc	season	wk	person	knit_cleanly
+viz_results_picks_bywk_show	viz_results_picks_bywk
+viz_results_picks_byyr_show	viz_results_picks_byyr
+results_picks_byyr_show	results_picks_byyr	%>%	arrange	desc	season	person	knit_cleanly

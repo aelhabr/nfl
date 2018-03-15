@@ -1,0 +1,670 @@
+---
+title: "Analysis of NFL Predictions"
+author: ""
+date: ""
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    fig_mobile: FALSE
+    theme: journal
+---
+<style>
+.toggle {
+  height: 1.75em;
+  overflow-y: hidden;
+}
+.toggle.open {
+  height: auto;
+}
+pre.sourceCode.r {
+  background-color: #ffffff;
+}
+pre code {
+  font-size: 12px;
+}
+body {
+  padding-top: 70px;
+}
+.section.sidebar {
+  top: 61px;
+  background-color: rgba(0, 0, 0, 0.15);
+}
+.bg-primary {
+  background-color: rgb(0, 0, 0, 0.7);
+}
+.storyboard-nav .sbframelist ul li.active {
+  background-color: rgba(0, 0, 0, 0.7);
+}
+.nav-tabs-custom > .nav-tabs > li.active {
+  border-top-color: rgba(0, 0, 0, 0.7);
+}
+.navbar-inverse {
+  background-color: rgba(0, 0, 0, 1);
+  border-color: rgba(0, 0, 0, 1);
+}
+</style>
+<script>
+  $(".toggle").click(function() {
+    $(this).toggleClass("open");
+  });
+</script>
+```{r setup, include = FALSE}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::opts_chunk$set(
+  echo = FALSE,
+  include = FALSE,
+  # eval = FALSE,
+  cache = TRUE,
+  autodep = TRUE,
+  # results = "markup",
+  # fig.align = "center",
+  # fig.show = "hide",
+  fig.width = 8,
+  fig.height = 8,
+  # out.width = 6,
+  # out.height = 6,
+  # width = 80,
+  warning = FALSE,
+  message = FALSE
+)
+
+# metric_string <- ""
+```
+
+```{r vars_shiny}
+evaluate_rs_only <- TRUE
+yrs_rng <- 5
+wks_rng <- 5
+
+```
+
+```{r packages}
+library("dplyr")
+library("stringr")
+library("tidyr")
+# library("readxl")
+library("ggplot2")
+```
+
+```{r functions}
+
+# This is for game results analysis.
+ifelse_correct <-
+  function(pred,
+           actual,
+           true = "correct",
+           false = "incorrect") {
+    ifelse(pred == actual, true, false)
+  }
+```
+
+```{r vars_const}
+wk_rs_last <- 17
+persons_dual <- c("Andrew", "Tony")
+person_actual <- "Actual"
+person_tie <- "Tie"
+persons_trips_1 <- c(persons_dual, person_actual)
+persons_trips_2 <- c(persons_dual, person_tie)
+
+
+colors_dual <- c("darkorange", "dodgerblue")
+color_default_1 <- "grey"
+color_default_2 <- color_default_1
+colors_trips <- c(colors_dual, color_default_1)
+colors_trips_1 <- stats::setNames(c(colors_dual, color_default_1), persons_trips_1)
+colors_trips_2 <- stats::setNames(c(colors_dual, color_default_2), persons_trips_2)
+
+path_data <- file.path("data", "db_nfl.xlsm")
+readxl::excel_sheets(path_data)
+
+```
+
+```{r import}
+# ws_persons <- "persons"
+# persons_info <- path_data %>% readxl::read_excel(sheet = ws_persons)
+
+ws_game_results <- "nfl_game_results"
+suppressWarnings(
+  game_results <- 
+    path_data %>% 
+    readxl::read_excel(sheet = ws_game_results)
+)
+
+# Change the n_max parameter because the first non-blank tm_pick_straight is not
+# seen in the firs 1000 rows.
+ws_game_picks <- "nfl_game_picks"
+
+suppressWarnings(
+  game_picks <- 
+    path_data %>% 
+    readxl::read_excel(sheet = ws_game_picks, guess_max = 2000)
+)
+
+cols_game_results <-
+  setdiff(names(game_results), "game_results_name")
+cols_game_picks <-
+  c(
+    # "id",
+    "game_results_id",
+    "person",
+    "line_home_pick",
+    # "tm_away_pts_pick",
+    # "tm_home_pts_pick",
+    "tm_pick_spread",
+    "confidence_spread",
+    "tm_pick_straight"
+  )
+game_picks_join <-
+  game_results %>%
+  select(one_of(cols_game_results)) %>% 
+  left_join(game_picks %>% select(one_of(cols_game_picks)), by = c("id" = "game_results_id"))
+```
+
+```{r vars_const_calc}
+rows_firstlast <-
+  game_results %>%
+  filter(!is.na(season) & !is.na(wk)) %>%
+  # arrange(season, wk) %>%
+  slice(c(1, n()))
+first_results_row <- rows_firstlast %>%  slice(1)
+last_results_row <- rows_firstlast %>% slice(n())
+
+yr_first <- first_results_row %>% pull(season)
+yr_curr <- last_results_row %>% pull(season)
+wk_curr <- last_results_row %>% pull(wk)
+if(wk_curr > wk_rs_last) {
+  wk_curr <- wk_rs_last
+}
+if (yrs_rng > (yr_curr - yr_first)) {
+  yrs_rng <- yr_curr - yr_first
+}
+
+wk_prev <- wk_curr - 1
+yr_display_min <- yr_curr - yrs_rng
+yr_display_max <- yr_curr
+```
+
+```{r viz_constants}
+theme_custom <-
+  teplot::theme_te(option = "a")
+
+x_wk_vals <- seq(0, wk_rs_last, by = 1)
+y_wk_vals <- seq(0, wk_rs_last, by = 2)
+alpha_secondary <- 0.5
+x_yr_vals <- seq(yr_display_min, yr_curr, by = 1)
+```
+
+```{r data_filt}
+game_picks_join <-
+  game_picks_join %>%
+  filter(person %in% persons_dual) %>%
+  # mutate(person = factor(person)) %>% 
+  arrange(id, person)
+
+if (evaluate_rs_only) {
+  game_picks_join <-
+    game_picks_join %>%
+    filter(wk <= wk_rs_last)
+}
+```
+
+```{r viz_line_picks_tidy_recent}
+cols_dates <- c("season", "wk")
+cols_game_id <- c(cols_dates, "tm_away", "tm_home")
+cols_display_line_picks_recent <- c(cols_game_id, "person", "value")
+
+# `distinct()` removes duplicate "Actual"s.
+line_picks_recent <-
+  game_picks_join %>%
+  mutate(line_home = ifelse(is.na(line_home_open), line_home_close, line_home_open)) %>%
+  select(-starts_with("line_home_[co]")) %>%
+  tidyr::gather(line_type, value, line_home, line_home_pick) %>%
+  mutate(person = ifelse(line_type == "line_home", person_actual, person) %>% 
+           factor(levels = c(persons_dual, person_actual))) %>%
+  select(one_of(cols_display_line_picks_recent)) %>%
+  distinct()
+
+# Debugging...
+line_picks_recent %>% filter(person == "Actual") %>% tail()
+line_picks_recent %>% filter(person == persons_dual[1]) %>% tail()
+
+lab_title_line_picks_recent <- "\"Guessing the Lines\" Picks"
+lab_subtitle_line_picks_recent <- sprintf("Week %.0f, .%.0f", wk_curr, yr_curr)
+width_dodge <- 0.5
+viz_line_picks_tidy_recent <-
+  line_picks_recent %>%
+  filter(season == yr_curr, wk == wk_prev) %>%
+  mutate(matchup = paste0(tm_away, "@", tm_home) %>% forcats::fct_reorder(value)) %>%
+  ggplot(aes(x = value, y = matchup)) +
+  ggstance::geom_pointrangeh(
+    aes(xmin = 0, xmax = value, color = person),
+    size = 1,
+    position = ggstance::position_dodgev(width_dodge)
+  ) +
+  scale_color_manual(values = colors_trips_1) +
+  theme_custom +
+  labs(title = lab_title_line_picks_recent, subtitle = lab_subtitle_line_picks_recent) +
+  labs(x = NULL, y = NULL)
+viz_line_picks_tidy_recent
+```
+
+```{r line_picks_proc}
+cols_display_line_picks <-
+  c(cols_game_id, "person", "line_home", "line_home_pick")
+line_picks_tidy <-
+  game_picks_join %>%
+  mutate(line_home = ifelse(is.na(line_home_open), line_home_close, line_home_open)) %>%
+  select(-starts_with("line_home_[co]")) %>%
+  select(one_of(cols_display_line_picks)) %>%
+  mutate(person = factor(person, levels = c(persons_trips_1))) %>% 
+  tidyr::spread(person, line_home_pick, fill = 0)
+line_picks_tidy
+
+compute_h2h_winner_abs_at <-
+  function(data = NULL,
+           col_x = persons_dual[1],
+           col_y = persons_dual[2],
+           col_ref = NULL,
+           col_new = NULL,
+           true_x = col_x,
+           true_y = col_y,
+           default = NA) {
+    col_x_sym <- rlang::sym(col_x)
+    col_y_sym <- rlang::sym(col_y)
+    col_ref_sym <- rlang::sym(col_ref)
+    col_new_sym <- rlang::sym(col_new)
+    data %>%
+      mutate(!!col_new_sym :=
+               ifelse(
+                 abs(!!col_x_sym - !!col_ref_sym) < abs(!!col_y_sym - !!col_ref_sym),
+                 true_x,
+                 ifelse(abs(!!col_x_sym - !!col_ref_sym) > abs(!!col_y_sym - !!col_ref_sym),
+                        true_y,
+                        default)
+               ))
+  }
+
+line_picks_calc <-
+  line_picks_tidy %>%
+  compute_h2h_winner_abs_at(col_ref = "line_home", col_new = "winner", default = person_tie)
+line_picks_calc
+
+line_picks_summ_bywk <-
+  line_picks_calc %>%
+  group_by(season, wk, winner) %>%
+  summarise(winner_cnt = n()) %>% 
+  ungroup()
+
+# line_picks_summ_bywk <-
+#   line_picks_calc %>%
+#   tidyr::gather(person, value, Andrew:Tony) %>% 
+#   group_by(season, wk, person, winner) %>%
+#   summarise(winner_cnt = n()) %>% 
+#   ungroup()
+
+# Debugging...
+line_picks_summ_bywk %>% tail()
+
+line_picks_bywk_spread <-
+  line_picks_summ_bywk %>%
+  group_by(season, winner) %>%
+  tidyr::spread(winner, winner_cnt, fill = 0) %>%
+  mutate_all(as.integer) %>% 
+  ungroup() %>% 
+  arrange(season, wk)
+line_picks_bywk_spread %>% tail()
+```
+
+```{r viz_line_picks_bywk}
+lab_title_line_picks_bywk <- "Head-to-Head \"Guessing the Lines\" Wins"
+lab_subtitle_line_picks_bywk <- sprintf("By Week, %.0f", yr_curr)
+viz_line_picks_bywk <-
+  line_picks_bywk_spread %>%
+  tidyr::gather(person, cnt, -season, -wk) %>%
+  mutate(person = factor(person, levels = persons_trips_2)) %>% 
+  filter(season == yr_curr) %>%
+  filter(wk < wk_curr) %>%
+  ggplot(aes(x = wk, y = cnt)) +
+  geom_pointrange(
+    aes(ymin = 0, ymax = cnt, color = person), 
+    size = 1,
+    position = position_dodge(width_dodge)
+  ) +
+  scale_color_manual(values = colors_trips_2) +
+  scale_x_continuous(breaks = x_wk_vals) +
+  scale_y_continuous(breaks = y_wk_vals) +
+  theme_custom +
+  labs(title = lab_title_line_picks_bywk, subtitle = lab_subtitle_line_picks_bywk) +
+  labs(x = NULL, y = NULL)
+viz_line_picks_bywk
+```
+
+```{r line_picks_summ_byyr}
+line_picks_bywk_spread_calc <-
+  line_picks_bywk_spread %>%
+  mutate(dummy = 0) %>% 
+  compute_h2h_winner_abs_at(col_ref = "dummy", col_new = "winner", default = person_tie) %>% 
+  select(-dummy) %>% 
+  filter(!is.na(winner)) %>%
+  filter(season != yr_curr | (season == yr_curr & wk < wk_curr))
+line_picks_bywk_spread_calc %>% tail()
+
+line_picks_summ_byyr <-
+  line_picks_bywk_spread_calc %>%
+  group_by(season, person = winner) %>%
+  summarise(cnt = n()) %>% 
+  ungroup()
+line_picks_summ_byyr %>% tail()
+
+line_picks_byyr_spread <-
+  line_picks_summ_byyr %>%
+  tidyr::spread(person, cnt)
+line_picks_byyr_spread %>% tail()
+```
+
+```{r viz_line_picks_byyr}
+lab_title_line_picks_byyr <- "Head-to-Head \"Guessing the Lines\" Week Wins"
+lab_subtitle_line_picks_byyr <- sprintf("By Season, %.0f - %.0f",  yr_display_min, yr_curr)
+viz_line_picks_byyr <-
+  line_picks_summ_byyr %>%
+  mutate(person = factor(person, levels = persons_trips_2)) %>% 
+  ggplot(aes(x = season, y = cnt)) +
+  geom_pointrange(
+    aes(ymin = 0, ymax = cnt, color = person), 
+    size = 1,
+    position = position_dodge(width_dodge)
+  ) +
+  scale_color_manual(values = colors_trips_2) +
+  scale_y_continuous(breaks = y_wk_vals) +
+  theme_custom +
+  labs(title = lab_title_line_picks_byyr, subtitle = lab_subtitle_line_picks_byyr) +
+  labs(x = NULL, y = NULL)
+viz_line_picks_byyr
+```
+
+```{r results_picks_calc}
+results_picks_calc <-
+  game_picks_join %>%
+  mutate(
+    pick_result_spread = ifelse_correct(tm_pick_spread, tm_winner_spread),
+    pick_result_straight = ifelse_correct(tm_pick_straight, tm_winner_straight)
+  ) %>%
+  filter(!is.na(pick_result_spread))
+results_picks_calc
+```
+
+```{r results_picks_calc_recent}
+lab_title_results_picks_recent <- "\"Guessing the Lines\" Picks"
+lab_subtitle_results_picks_recent <- sprintf("Line Picks, Week %.0f, .%.0f", wk_curr, yr_curr)
+viz_results_picks_recent <-
+  results_picks_calc %>%
+  filter(season == yr_curr, wk == wk_prev) %>%
+  # mutate(matchup = paste0(tm_away, "@", tm_home) %>% forcats::fct_reorder(value)) %>%
+  mutate(matchup = paste0(tm_away, "@", tm_home) %>% forcats::fct_reorder(confidence_spread)) %>% 
+  ggplot(aes(y = matchup, x = confidence_spread)) +
+  # scale_x_discrete(limits = c(0.1, 0.9)) +
+  ggstance::geom_pointrangeh(
+    aes(xmin = 0, xmax = confidence_spread, color = person), 
+    size = 1, 
+    position = ggstance::position_dodgev(width_dodge)
+  ) +
+  # scale_x_discrete(limits = c(0.5, 0.9)) +
+  scale_color_manual(values = colors_dual) +
+  theme_custom +
+  labs(title = lab_title_results_picks_recent, subtitle = lab_subtitle_results_picks_recent) +
+  labs(x = NULL, y = NULL)
+viz_results_picks_recent
+
+```
+```{r viz_results_picks_recent}
+
+arrow_padding <- 1.5
+arrow_offset <- 5
+colors_contrast2 <- c("#00ba38", "#f8766d")
+# colors_contrast2 <- list(high = "#00ba38", low = "#f8766d")
+# scales::show_col(colors_contrast2)
+point_size <- 10
+
+results_picks_calc_recent <-
+  results_picks_calc %>%
+  filter(season == yr_curr, wk == wk_prev) %>%
+  mutate(matchup = paste0(tm_away, "@", tm_home)) %>%
+  mutate(pts_h2a_diff = pts_home - pts_away) %>%
+  mutate(w_home = if_else(pts_h2a_diff > 0, "yes", "no")) %>%
+  mutate(matchup = factor(matchup) %>% forcats::fct_reorder(line_home_close)) %>% 
+  mutate(arrow_dir = ifelse(tm_pick_spread == tm_home, -1, 1)) %>%
+  mutate(
+    pick_arrow_end1 = line_home_close + arrow_padding * arrow_dir,
+    pick_arrow_end2 = line_home_close + (arrow_padding + arrow_offset) * arrow_dir
+  )
+
+results_picks_calc_recent %>% glimpse()
+
+viz_results_picks_recent <-
+  results_picks_calc_recent %>%
+  ggplot() +
+  geom_vline(aes(xintercept = 0), color = "black") +
+  geom_segment(
+    aes(
+      y = matchup,
+      x = pick_arrow_end1,
+      yend = matchup,
+      xend = pick_arrow_end2,
+      color = person
+    ),
+    size = 2,
+    arrow = arrow(length = unit(0.1, "cm"))
+  ) +
+  # scale_color_manual(values = c(colors_dual, rep("black", 2))) +
+  geom_point(
+    aes(y = matchup, x = line_home_close),
+    shape = 21,
+    # color = "black",
+    size = point_size
+  ) +
+  geom_text(aes(y = matchup, x = line_home_close, label = line_home_close)) +
+  geom_point(aes(y = matchup, x = pts_h2a_diff, color = w_home), size = point_size) +
+  geom_text(aes(y = matchup, x = pts_h2a_diff, label = pts_h2a_diff)) +
+  geom_segment(aes(
+    y = matchup,
+    x = line_home_close,
+    yend = matchup,
+    xend = pts_h2a_diff
+  ),
+  linetype = "dotted") +
+  theme_custom +
+  labs(x = NULL, y = NULL)
+viz_results_picks_recent
+```
+
+```{r results_picks_bywk}
+results_picks_summ <-
+  results_picks_calc %>%
+  group_by(season, wk, person, pick_result_spread) %>%
+  summarise(cnt = n()) %>% 
+  ungroup()
+results_picks_summ %>% tail()
+
+results_picks_bywk <-
+  results_picks_summ %>%
+  # tidyr::spread(pick_result_spread, cnt, sep = "_") %>%
+  tidyr::spread(pick_result_spread, cnt) %>%
+  mutate(correct_pct = correct / (correct + incorrect)) %>%
+  ungroup() %>%
+  group_by(season, person) %>%
+  arrange(season, wk) %>% 
+  mutate(correct_pct_td = cumsum(correct) / (cumsum(correct) + cumsum(incorrect))) %>% 
+  ungroup()
+results_picks_bywk %>% tail()
+```
+
+```{r viz_results_picks_bywk}
+lab_title_results_picks_bywk <- "Accuracy of Game Picks, Against the Spread"
+lab_subtitle_results_picks_bywk <- sprintf("By Week, %.0f", yr_curr)
+
+viz_results_picks_bywk <-
+  results_picks_bywk %>%
+  filter(season == yr_curr) %>%
+  ggplot(aes(x = wk, y = correct_pct)) +
+  geom_pointrange(
+    aes(
+      ymin = 0,
+      ymax = correct_pct,
+      color = person
+    ), 
+    size = 1, 
+    position = position_dodge(width_dodge)
+  ) +
+  geom_line(aes(x = wk, y = correct_pct_td, color = person), size = 1) +
+  geom_hline(
+    aes(yintercept = 0.5),
+    color = "black",
+    size = 1,
+    linetype = "dashed"
+  ) +
+  scale_color_manual(values = colors_dual) +
+  scale_x_continuous(breaks = x_wk_vals) +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
+  theme_custom +
+  labs(title = lab_title_results_picks_bywk, subtitle = lab_title_results_picks_bywk) +
+  labs(x = NULL, y = NULL)
+viz_results_picks_bywk
+```
+
+```{r results_picks_byyr}
+results_picks_byyr <-
+  results_picks_bywk %>%
+  group_by(season, person) %>%
+  # mutate(correct_pct = correct / (correct + incorrect))
+  summarise_at(vars(correct, incorrect), funs(sum), na.rm = TRUE) %>%
+  mutate(correct_pct = correct / (correct + incorrect)) %>% 
+  ungroup() %>% 
+  group_by(person) %>%
+  arrange(season) %>% 
+  mutate(correct_pct_td = cumsum(correct) / (cumsum(correct) + cumsum(incorrect))) %>% 
+  ungroup()
+results_picks_byyr %>% tail()
+
+```
+
+```{r viz_results_picks_byyr}
+lab_title_results_picks_byyr <- lab_title_results_picks_bywk
+lab_subtitle_results_picks_bywk <- sprintf("By Year, %.0f - %.0f", yr_display_min, yr_curr)
+viz_results_picks_byyr <-
+  results_picks_byyr %>%
+  ggplot(aes(x = season, y = correct_pct)) +
+  geom_pointrange(
+    aes(
+      ymin = 0,
+      ymax = correct_pct,
+      color = person
+    ), 
+    size = 1, 
+    position = position_dodge(width_dodge)
+  ) +
+  geom_line(aes(x = season, y = correct_pct_td, color = person), size = 1) +
+  geom_hline(
+    aes(yintercept = 0.5),
+    color = "black",
+    size = 1,
+    linetype = "dashed"
+  ) +
+  scale_color_manual(values = colors_dual) +
+  scale_x_continuous(breaks = x_wk_vals) +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
+  theme_custom +
+  labs(title = lab_title_results_picks_byyr, subtitle = lab_title_results_picks_byyr) +
+  labs(x = NULL, y = NULL)
+viz_results_picks_byyr
+```
+
+```{r knit_cleanly}
+knit_cleanly <- function(data = NULL) {
+  data %>%
+    mutate_if(is.numeric, funs(round(., 3))) %>% 
+    knitr::kable(format = "html") %>% 
+    kableExtra::kable_styling(full_width = F, position = "left")
+}
+```
+
+
+Lines
+=
+
+Column {.tabset .tabset-fade}
+-
+
+### Viz
+
+```{r viz_line_picks_bywk_show, include = TRUE, fig.show = "asis"}
+viz_line_picks_bywk
+```
+
+```{r line_picks_bywk_show, include = TRUE, results = "markup"}
+line_picks_bywk_spread %>%
+  # tail(wks_rng) %>% 
+  arrange(desc(season), desc(wk), person) %>% 
+  knit_cleanly()
+```
+
+
+Column {.tabset .tabset-fade}
+-
+
+### Viz
+
+```{r viz_line_picks_byyr_show, include = TRUE, fig.show = "asis"}
+viz_line_picks_byyr
+```
+
+### Data
+
+```{r line_picks_byyr_show, include = TRUE, results = "markup"}
+line_picks_byyr_spread %>%
+  # tail(yrs_rng) %>% 
+  knit_cleanly()
+```
+
+Results
+=
+
+Column {.tabset .tabset-fade}
+-
+
+### Viz
+
+```{r viz_results_picks_bywk_show, include = TRUE, fig.show = "asis"}
+viz_results_picks_bywk
+```
+
+### Data
+
+```{r results_picks_bywk_show, include = TRUE, results = "markup"}
+results_picks_bywk %>%
+  # tail(wks_rng * length(persons_dual)) %>% 
+  knit_cleanly()
+```
+
+
+Column {.tabset .tabset-fade}
+-
+
+### Viz
+
+```{r viz_results_picks_byyr_show, include = TRUE, fig.show = "asis"}
+viz_results_picks_byyr
+```
+
+### Data 
+
+```{r results_picks_byyr_show, include = TRUE, results = "markup"}
+results_picks_byyr %>%
+  # tail(yrs_rng * length(persons_dual)) %>% 
+  knit_cleanly()
+```
+
+About
+=
+
+This about shows the "predictions" made by my brother (Andrew) and I (Tony)
+for NFL games since 2012.
